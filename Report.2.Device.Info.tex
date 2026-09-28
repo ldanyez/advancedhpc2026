@@ -1,0 +1,118 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  frame=single,
+  backgroundcolor=\color{gray!8},
+  breaklines=true
+}
+
+\title{Labwork 2: Get to know your GPU}
+\author{Yanis Denizot -- 2640051}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Objective}
+The goal of this labwork is to use \texttt{numba.cuda} to get basic information
+about the GPU: its name, its number of multiprocessors and cores, and its memory size.
+
+
+\section{Environment}
+My laptop only has an Intel Iris Xe graphics card, and CUDA only works with NVIDIA GPUs.
+So I ran the code on Google Colab (Linux), which gives access to an NVIDIA Tesla T4 GPU.
+
+
+\section{Method}
+First, \texttt{cuda.detect()} lists the available GPUs. Then \texttt{cuda.select\_device(0)}
+selects the first GPU and returns a device object. From this object I read the \texttt{id} and
+\texttt{name} attributes, the number of streaming multiprocessors (SM) with
+\texttt{MULTIPROCESSOR\_COUNT}, and the compute capability with \texttt{compute\_capability}.
+For the memory, \texttt{cuda.current\_context().get\_memory\_info()} returns the free and total
+memory in bytes, so I divide by $1024^3$ to get the value in GB.
+
+Numba does not give the number of cores directly. A GPU is divided into SMs, and each SM
+contains a fixed number of cores. This number depends on the GPU architecture, which is given
+by the compute capability. Compute capability 7.5 corresponds to the Turing architecture,
+which has 64 CUDA cores per SM (NVIDIA documentation). So I computed:
+\[
+\text{total cores} = \text{number of SM} \times \text{cores per SM} = 40 \times 64 = 2560
+\]
+This matches the official Tesla T4 datasheet, which gives 2560 CUDA cores.
+The value 64 is only valid for this GPU: on a GPU with another compute capability,
+it has to be changed.
+
+
+\begin{lstlisting}[language=Python]
+from numba import cuda
+
+cuda.detect()
+
+gpu = cuda.select_device(0)
+print(gpu.id)
+print(gpu.name)
+
+sm_count = gpu.MULTIPROCESSOR_COUNT
+print(sm_count)
+
+cc = gpu.compute_capability
+print(cc)
+
+# Tesla T4 : compute capability 7.5 = Turing architecture = 64 cores per SM
+cores_per_sm = 64
+cores = sm_count * cores_per_sm
+print(cores)
+
+free, total = cuda.current_context().get_memory_info()
+print(total / 1024**3)
+print(free / 1024**3)
+\end{lstlisting}
+
+\section{Results}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Property} & \textbf{Value} \\
+\midrule
+Device ID          & 0 \\
+Device name        & Tesla T4 \\
+Compute capability & 7.5 \\
+Multiprocessors (SM) & 40 \\
+Cores per SM       & 64 \\
+Total cores        & 2560 \\
+Total memory       & 14.56 GB \\
+Free memory        & 14.46 GB \\
+\bottomrule
+\end{tabular}
+\caption{Information about the GPU}
+\end{table}
+
+Output of \texttt{cuda.detect()}:
+
+\begin{lstlisting}
+Found 1 CUDA devices
+id 0             Tesla T4                              [SUPPORTED]
+                      Compute Capability: 7.5
+                           PCI Device ID: 4
+                              PCI Bus ID: 0
+                                    UUID: GPU-60411518-bba0-87d6-6592-1682f007169f
+                                Watchdog: Disabled
+             FP32/FP64 Performance Ratio: 32
+Summary:
+        1/1 devices are supported
+\end{lstlisting}
+
+\section{Conclusion}
+The Tesla T4 has 40 multiprocessors, 2560 cores and about 14.5 GB of memory. This is many
+more cores than a normal CPU, which is why a GPU can be much faster for tasks that can be
+split into many small independent parts, like processing all the pixels of an image.
+
+
+\end{document}
